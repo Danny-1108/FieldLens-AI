@@ -1,0 +1,6 @@
+{
+  "name": "FieldLens: AI Field Observation Assistant",
+  "description": "Mobile-first environmental science and geoscience field observation assistant with multimodal AI, calibrated scientific uncertainty, in-person test prompts, and offline field journal.",
+  "requestFramePermissions": ["camera", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
