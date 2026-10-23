@@ -5,6 +5,7 @@ interface AnalysisLoadingProps {
   sunlightMode: boolean;
   categoryLabel: string;
   isAutoRetrying?: boolean;
+  isFallbackModel?: boolean;
 }
 
 const LOADING_STAGES = [
@@ -17,6 +18,7 @@ export const AnalysisLoading: React.FC<AnalysisLoadingProps> = ({
   sunlightMode,
   categoryLabel,
   isAutoRetrying = false,
+  isFallbackModel = false,
 }) => {
   const [activeStage, setActiveStage] = useState(0);
 
@@ -61,13 +63,21 @@ export const AnalysisLoading: React.FC<AnalysisLoadingProps> = ({
             {categoryLabel}
           </span>
           <h3 className={`text-base font-bold mt-1.5 ${sunlightMode ? 'text-slate-950' : 'text-slate-100'}`}>
-            {isAutoRetrying ? 'Retrying Field Analysis' : 'Analyzing Observation'}
+            {isFallbackModel
+              ? 'Connecting to Backup AI Model'
+              : isAutoRetrying
+              ? 'Retrying Field Analysis'
+              : 'Analyzing Observation'}
           </h3>
-          {isAutoRetrying && (
+          {isFallbackModel ? (
+            <p className="text-xs text-amber-400 mt-1 font-medium">
+              Primary model busy. Using backup model for faster recovery.
+            </p>
+          ) : isAutoRetrying ? (
             <p className="text-xs text-amber-400 mt-1 font-medium">
               High service demand detected. Automatically retrying...
             </p>
-          )}
+          ) : null}
         </div>
 
         {/* 3 Explicit Progress Steps */}

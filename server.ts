@@ -75,7 +75,14 @@ function formatFriendlyError(err: any): { statusCode: number; errorType: string;
 // Initial Fast Analysis Route (Concise, fast first response)
 app.post('/api/analyze-observation', async (req, res) => {
   try {
-    const { imageBase64, mimeType = 'image/jpeg', category = 'geology', userNotes = '' } = req.body;
+    const {
+      imageBase64,
+      mimeType = 'image/jpeg',
+      category = 'geology',
+      userNotes = '',
+      retryAttempt = 0,
+      model,
+    } = req.body;
 
     if (!imageBase64) {
       return res.status(400).json({
@@ -169,8 +176,13 @@ First validate if the photo contains a natural field observation or is out of sc
 3. In-person verification checks: Exactly 3 safe in-person checks tailored specifically to the visible environmental scene depicted (e.g. wetland/marsh checks for wetlands, slope/erosion checks for hillslopes, foliar checks for plants, texture/hardness for rocks).
 4. Field notebook summary: Maximum 3 sentences: Sentence 1 direct visible observation, Sentence 2 one concise tentative interpretation using uncertainty language only once (such as 'The scene may be consistent with...' or 'These features may suggest...'), Sentence 3 the most relevant context-specific verification step.`;
 
+    // Primary model: gemini-3.8-flash.
+    // Fallback model: gemini-3.5-flash-lite (activated after 3 retry attempts or explicit request).
+    const isFallbackModel = model === 'gemini-3.5-flash-lite' || Number(retryAttempt) > 3;
+    const targetModel = isFallbackModel ? 'gemini-3.5-flash-lite' : 'gemini-3.8-flash';
+
     const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+      model: targetModel,
       contents: {
         parts: [
           {
@@ -465,6 +477,8 @@ function normalizeFieldAnalysis(raw: any, category: string) {
       success: true,
       analysis: normalizedAnalysis,
       category,
+      modelUsed: targetModel,
+      isFallbackModel,
       timestamp: Date.now(),
     });
   } catch (err: any) {

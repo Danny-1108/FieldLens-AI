@@ -73,11 +73,13 @@ export default function App() {
     attempt: number;
     countdown: number;
     delaySeconds: number;
+    isFallbackActive: boolean;
   }>({
     isActive: false,
     attempt: 0,
     countdown: 0,
     delaySeconds: 0,
+    isFallbackActive: false,
   });
 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -122,6 +124,7 @@ export default function App() {
       attempt: 0,
       countdown: 0,
       delaySeconds: 0,
+      isFallbackActive: false,
     });
   };
 
@@ -179,12 +182,14 @@ export default function App() {
     }
 
     const delay = getBackoffDelay(nextAttempt);
+    const isFallback = nextAttempt > 3;
 
     setAutoRetryState({
       isActive: true,
       attempt: nextAttempt,
       countdown: delay,
       delaySeconds: delay,
+      isFallbackActive: isFallback,
     });
 
     let remaining = delay;
@@ -309,11 +314,26 @@ export default function App() {
       retryTimeoutRef.current = null;
     }
 
+    // Requirements 1 & 2: Keep gemini-3.8-flash as primary.
+    // If primary model continues returning temporary errors after 3 automatic retry attempts,
+    // switch to lighter fallback model: gemini-3.5-flash-lite.
+    const isFallbackModel = retryAttempt > 3;
+    const modelToUse = isFallbackModel ? 'gemini-3.5-flash-lite' : 'gemini-3.8-flash';
+
     // Set active request locks and immediately update loading state
     isRequestInProgressRef.current = true;
     setIsLoading(true);
     setIsAutoRetrying(retryAttempt > 0);
     setApiError(null);
+
+    if (retryAttempt > 0) {
+      setAutoRetryState((prev) => ({
+        ...prev,
+        isActive: true,
+        attempt: retryAttempt,
+        isFallbackActive: isFallbackModel,
+      }));
+    }
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -329,6 +349,8 @@ export default function App() {
           mimeType: mimeTypeRef.current || mimeType,
           category: selectedCategoryRef.current || selectedCategory,
           userNotes: userNotesRef.current || userNotes,
+          retryAttempt,
+          model: modelToUse,
         }),
         signal: controller.signal,
       });
@@ -637,7 +659,9 @@ export default function App() {
                 <div>
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <h3 className="font-bold text-sm sm:text-base leading-snug">
-                      AI service temporarily busy
+                      {autoRetryState.isFallbackActive
+                        ? 'Primary AI model is busy. Trying backup model…'
+                        : 'AI service temporarily busy'}
                     </h3>
                     <span
                       className={`text-[11px] font-bold px-2 py-0.5 rounded-md ${
@@ -647,6 +671,7 @@ export default function App() {
                       }`}
                     >
                       Attempt #{autoRetryState.attempt}
+                      {autoRetryState.isFallbackActive ? ' · Backup model' : ''}
                     </span>
                   </div>
                   <p
@@ -654,7 +679,9 @@ export default function App() {
                       sunlightMode ? 'text-slate-800' : 'text-slate-300'
                     }`}
                   >
-                    Your photo is safe. FieldLens will automatically try again.
+                    {autoRetryState.isFallbackActive
+                      ? 'Your photo is safe. Automatically switching to lighter backup model for faster recovery.'
+                      : 'Your photo is safe. FieldLens will automatically try again.'}
                   </p>
                 </div>
 
@@ -670,7 +697,9 @@ export default function App() {
                     <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                     <span>
                       {isLoading
-                        ? 'Connecting to AI service...'
+                        ? autoRetryState.isFallbackActive
+                          ? 'Connecting to backup model...'
+                          : 'Connecting to AI service...'
                         : `Retrying in ${autoRetryState.countdown}s...`}
                     </span>
                   </div>
@@ -797,6 +826,7 @@ export default function App() {
             sunlightMode={sunlightMode}
             categoryLabel={categoryMeta.label}
             isAutoRetrying={isAutoRetrying}
+            isFallbackModel={autoRetryState.isFallbackActive}
           />
         ) : analysisResult && imageDataUrl ? (
           <ResultsSection
