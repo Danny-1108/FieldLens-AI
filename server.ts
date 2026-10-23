@@ -5,6 +5,8 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
+import { formatFieldNotebookSummary } from './src/utils/summaryFormatter.js';
+import { getContextAwareFallbackChecks } from './src/utils/contextChecks.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -86,11 +88,11 @@ app.post('/api/analyze-observation', async (req, res) => {
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      return res.status(503).json({
+      return res.status(500).json({
         success: false,
-        errorType: 'TEMPORARILY_UNAVAILABLE',
-        title: 'Analysis temporarily unavailable',
-        message: 'The AI service is experiencing high demand right now. Your photo has been preserved. Please wait a few seconds and try again.',
+        errorType: 'MISSING_CONFIG',
+        title: 'Configuration required',
+        message: 'The AI service configuration is not set up in this environment.',
       });
     }
 
@@ -136,22 +138,36 @@ CORE SCIENTIFIC DISTINCTION RULES (WHEN IN SCOPE):
 3. Possible Interpretation (Section 1):
    - Strictly use uncertainty language: "may", "could", "appears consistent with", "one possibility is", "suggests characteristics resembling".
    - Avoid presenting specific environmental or taxonomic classifications as if an image alone can distinguish among them. State that visual features alone are preliminary and cannot confirm identity.
-4. Recommended In-Person Verification Checks & Diagnostic Clues (Section 3):
-   - Recommend safe, realistic field observations.
+4. Recommended In-Person Verification Checks & Diagnostic Clues (Section 3 - CONTEXT-AWARE):
+   - Ground all 3 checks directly in the ACTUAL visible evidence, tentative interpretation, and specific environmental context shown in the photograph, rather than only the broad category label:
+     * Wetland / marsh / riparian scene: check standing water depth, soil saturation, vegetation structure, water movement, or substrate conditions (NEVER recommend slope angle, talus, knickpoints, or rills for flat wetland/marsh environments).
+     * Hillslope / erosion scene: slope angle, rills, sediment transport, exposed substrate.
+     * Water body: flow rate, water clarity, shoreline sediment deposits, optional conductivity/pH if available.
+     * Rock/outcrop: texture, grain size, mineral hardness, bedding, fracture orientation.
+     * Plant: leaf arrangement, stem characteristics, surface texture, reproductive structures.
+   - Recommend safe, realistic field observations tailored to the exact environment in the photo.
    - If specialized equipment (e.g. conductivity meter, pH probe, Secchi disk, compass-clinometer, acid dropper) is mentioned, ALWAYS make it optional (e.g., "If available...", "With an optional hand lens..."). Never assume the user possesses specialized instruments.
    - In field-check clues, avoid implying that a single visual observation or simple field test identifies a chemical or ecological condition. Use cautious wording such as "may be consistent with" or "could suggest" (NEVER use "confirms", "proves", or "identifies").
    - Environmental Safety & Leave No Trace: All suggested checks must be environmentally responsible and safe. Never suggest leaving materials, markers, or chemicals in the environment. Never suggest applying acids or reagents directly onto outcrops or into waterways; test only tiny loose fragments and pack them out. Retrieve any float velocity markers immediately.
-5. Strict Length Constraints:
-   - Possible interpretation: Exactly 2 to 3 sentences.
+5. Strict Length & Field Notebook Summary Structure Constraints:
+   - Possible interpretation: Exactly 2 to 3 sentences using calibrated uncertainty phrasing.
    - Visible evidence: Exactly 3 concise points of pure visual observation using plain descriptive language.
-   - In-person verification checks: Exactly 3 safe, realistic checks with cautious clues ("may be consistent with" or "could suggest").
-   - Field notebook summary: No more than 3 sentences formatted for a student's field journal.
+   - In-person verification checks: Exactly 3 safe, realistic checks specifically tailored to the environmental scene depicted in the image.
+   - Field notebook summary: Exactly 2 or 3 sentences (maximum 3 sentences) formatted cleanly for a student's field journal:
+     * Sentence 1 (Direct Observation): Begin directly with a concise physical observation from the visible evidence.
+     * Sentence 2 (Tentative Interpretation): One concise tentative interpretation using uncertainty language only once, such as "The scene may be consistent with..." or "These features may suggest...". Never duplicate phrases such as "appears consistent with ... appears" or "appears in line with".
+     * Sentence 3 (Verification Step): The most relevant context-specific verification step.
+     * Grammar & Cleanliness: Natural phrasing, no repeated phrases, no duplicated punctuation (no ".."), and do not introduce new facts.
    - Checklist: Exactly 3 items corresponding to the in-person checks.`;
 
     const promptText = `Analyze this specimen image for the category: "${categoryContext}".
 ${userNotes ? `Student note: "${userNotes}"` : ''}
 
-First validate if the photo contains a natural field observation or is out of scope. If in scope, deliver a rapid, scientifically rigorous initial observation meeting the strict length limits (2-3 sentences interpretation with uncertainty language, exactly 3 strictly descriptive pixel-only visible evidence points using plain observational language, exactly 3 safe in-person checks with cautious clues ('may be consistent with' or 'could suggest'), and max 3-sentence summary).`;
+First validate if the photo contains a natural field observation or is out of scope. If in scope, deliver a rapid, scientifically rigorous initial observation meeting the strict length limits:
+1. Possible interpretation: Exactly 2-3 sentences with calibrated uncertainty phrasing.
+2. Visible evidence: Exactly 3 strictly descriptive pixel-only visible evidence points using plain observational language.
+3. In-person verification checks: Exactly 3 safe in-person checks tailored specifically to the visible environmental scene depicted (e.g. wetland/marsh checks for wetlands, slope/erosion checks for hillslopes, foliar checks for plants, texture/hardness for rocks).
+4. Field notebook summary: Maximum 3 sentences: Sentence 1 direct visible observation, Sentence 2 one concise tentative interpretation using uncertainty language only once (such as 'The scene may be consistent with...' or 'These features may suggest...'), Sentence 3 the most relevant context-specific verification step.`;
 
     const response = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
@@ -208,11 +224,12 @@ First validate if the photo contains a natural field observation or is out of sc
             inPersonInvestigateQuestions: {
               type: Type.ARRAY,
               items: { type: Type.STRING },
-              description: 'Section 3 (only if in scope): Exactly 3 safe, realistic in-person checks with optional equipment framing ("If available...") and cautious language ("may be consistent with", "could suggest").',
+              description: 'Section 3 (only if in scope): Exactly 3 safe, realistic in-person checks specifically tailored to the environmental scene and visible features (e.g. wetland/marsh water depth and soil saturation vs hillslope slope/erosion vs foliar structure vs mineral hardness), with optional equipment framing ("If available...") and cautious language ("may be consistent with", "could suggest").',
             },
             fieldNoteSummary: {
               type: Type.STRING,
-              description: 'Section 4 (only if in scope): A short field notebook summary of no more than 3 sentences cleanly separating visible observations from tentative hypotheses.',
+              description:
+                'Section 4 (only if in scope): Field notebook summary of exactly 2 to 3 sentences (maximum 3). Sentence 1 begins directly with a concise visible observation. Sentence 2 is one concise tentative interpretation using uncertainty language only once (e.g. "The scene may be consistent with..." or "These features may suggest..."). Sentence 3 is the most relevant context-specific verification step. Never use duplicate phrases or duplicated punctuation.',
             },
             uncertaintyDisclaimer: {
               type: Type.STRING,
@@ -365,38 +382,14 @@ function normalizeFieldAnalysis(raw: any, category: string) {
     }
   }
 
-  const fallbackChecksByCategory: Record<string, string[]> = {
-    geology: [
-      'If a pocket knife or penny is available, gently scratch a loose fragment to test relative mineral hardness (could suggest silicate vs carbonate).',
-      'With an optional 10x hand lens, inspect grain boundaries on a clean break to observe whether crystals show cleavage planes or granular interlocking.',
-      'Check orientation and strike of any visible banding or planar fractures using a compass if available (may be consistent with directional stress).',
-    ],
-    plant: [
-      'Gently examine the underside of a mature lower leaf with an optional hand lens to inspect vein networks or surface pubescence without picking the specimen.',
-      'Feel the stem cross-section between fingers to evaluate whether it is rounded, square, or ribbed (could suggest specific family characteristics).',
-      'Observe the arrangement of leaves along the stem node (alternate vs opposite) to evaluate branching morphology.',
-    ],
-    water: [
-      'Collect a small sample in a clean clear container to observe clarity, suspended sediment, and odor without adding chemicals (could suggest runoff influence).',
-      'Observe surface flow rate by tracking a floating leaf over a measured distance and retrieving it afterward (may indicate local hydrological velocity).',
-      'Inspect the shoreline margin for deposited gravel, silt lines, or staining indicating recent high-water levels.',
-    ],
-    landscape: [
-      'Estimate the slope angle and measure distance to key drainage knickpoints using pacing or a handheld clinometer if available (may be consistent with erosion stages).',
-      'Observe the transition zone where slope steepens to identify whether loose talus or cohesive bedrock underlies the surface.',
-      'Check for recent sediment accumulation at the base of slopes or rills to evaluate active transport rates.',
-    ],
-    other: [
-      'Gently test the surface texture and structural cohesion on a loose fragment using an optional hand lens in daylight.',
-      'Observe the surrounding context and contact relationships with adjacent soil or rock units.',
-      'Document orientation, strike, or gradient of key boundaries using a standard field compass if available.',
-    ],
-  };
-
-  const catCheckFallbacks = fallbackChecksByCategory[category] || fallbackChecksByCategory.other;
-  for (let i = 0; inPersonChecks.length < 3 && i < catCheckFallbacks.length; i++) {
-    if (!inPersonChecks.includes(catCheckFallbacks[i])) {
-      inPersonChecks.push(catCheckFallbacks[i]);
+  // If AI-generated checks are fewer than 3, pad with context-aware fallbacks
+  // based on visible evidence, tentative interpretation, and specific environmental context
+  if (inPersonChecks.length < 3) {
+    const contextFallbacks = getContextAwareFallbackChecks(category, possibleInterpretation, visibleEvidence);
+    for (const fb of contextFallbacks) {
+      if (inPersonChecks.length < 3 && !inPersonChecks.includes(fb)) {
+        inPersonChecks.push(fb);
+      }
     }
   }
   inPersonChecks = inPersonChecks.slice(0, 3);
@@ -426,8 +419,7 @@ function normalizeFieldAnalysis(raw: any, category: string) {
     });
   }
 
-  // 4. Field Notebook Summary (Max 3 sentences, NEVER empty or whitespace)
-  let fieldNoteSummary = '';
+  // 4. Field Notebook Summary (Max 3 sentences, natural, concise, no duplicate phrases)
   const candidateSummary =
     raw?.fieldNoteSummary ||
     raw?.fieldNotebookSummary ||
@@ -437,15 +429,12 @@ function normalizeFieldAnalysis(raw: any, category: string) {
     raw?.field_note_summary ||
     raw?.field_notebook_summary;
 
-  if (typeof candidateSummary === 'string' && candidateSummary.trim().length > 0) {
-    fieldNoteSummary = candidateSummary.trim();
-  } else {
-    // Generate/recover a concise, robust 2-3 sentence field notebook summary
-    const firstInterp = possibleInterpretation.split(/(?<=[.?!])\s+/)[0] || possibleInterpretation;
-    const firstEvid = visibleEvidence[0] ? visibleEvidence[0].replace(/\.$/, '') : 'distinguishing visible textures';
-    const firstCheck = inPersonChecks[0] ? inPersonChecks[0].split(/[.:]/)[0] : 'physical in-situ testing';
-    fieldNoteSummary = `Observed field specimen exhibiting ${firstEvid.toLowerCase()}. Visual characteristics appear consistent with ${firstInterp.toLowerCase().replace(/^the specimen appears consistent with /, '')}. In-person verification via ${firstCheck.toLowerCase()} is recommended to support identification.`;
-  }
+  const fieldNoteSummary = formatFieldNotebookSummary(candidateSummary, {
+    category,
+    visibleEvidence,
+    possibleInterpretation,
+    inPersonChecks,
+  });
 
   const uncertaintyDisclaimer =
     typeof raw?.uncertaintyDisclaimer === 'string' && raw.uncertaintyDisclaimer.trim().length > 0

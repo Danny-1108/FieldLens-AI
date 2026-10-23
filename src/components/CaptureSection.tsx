@@ -444,21 +444,26 @@ export const CaptureSection: React.FC<CaptureSectionProps> = ({
 
       {/* STEP 3: Primary Analyze Button */}
       <div className="pt-2">
-        <button
-          type="button"
-          onClick={onStartAnalysis}
-          disabled={!selectedImageDataUrl || isLoading || processingImage}
-          className={`w-full min-h-[54px] rounded-xl font-bold text-base flex items-center justify-center gap-2.5 shadow-lg transition-all active:scale-[0.98] border ${
-            !selectedImageDataUrl || isLoading
-              ? 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed opacity-60'
-              : sunlightMode
-              ? 'bg-amber-400 text-slate-950 border-slate-950 hover:bg-amber-300 shadow-amber-400/20'
-              : 'bg-amber-500 text-slate-950 border-amber-400 hover:bg-amber-400 shadow-amber-500/20'
-          }`}
-        >
-          <Sparkles className="w-5 h-5 shrink-0" />
-          <span>Analyze Observation</span>
-        </button>
+        {(() => {
+          const isAnalyzeDisabled = !selectedImageDataUrl || isLoading || processingImage;
+          return (
+            <button
+              type="button"
+              onClick={onStartAnalysis}
+              disabled={isAnalyzeDisabled}
+              className={`w-full min-h-[54px] rounded-xl font-bold text-base flex items-center justify-center gap-2.5 shadow-lg transition-all active:scale-[0.98] border ${
+                isAnalyzeDisabled
+                  ? 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed opacity-60'
+                  : sunlightMode
+                  ? 'bg-amber-400 text-slate-950 border-slate-950 hover:bg-amber-300 shadow-amber-400/20'
+                  : 'bg-amber-500 text-slate-950 border-amber-400 hover:bg-amber-400 shadow-amber-500/20'
+              }`}
+            >
+              <Sparkles className="w-5 h-5 shrink-0" />
+              <span>{processingImage ? 'Preparing Photo...' : isLoading ? 'Analyzing Observation...' : 'Analyze Observation'}</span>
+            </button>
+          );
+        })()}
 
         {!selectedImageDataUrl && (
           <p className={`text-center text-[11px] mt-2 ${sunlightMode ? 'text-slate-800' : 'text-slate-400'}`}>

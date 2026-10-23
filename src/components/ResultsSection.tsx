@@ -22,6 +22,8 @@ import {
 } from 'lucide-react';
 import { FieldAnalysisResult, ObservationCategory } from '../types';
 import { getCategoryMeta } from '../utils/categories';
+import { formatFieldNotebookSummary } from '../utils/summaryFormatter';
+import { getContextAwareFallbackChecks } from '../utils/contextChecks';
 
 interface ResultsSectionProps {
   analysis: FieldAnalysisResult;
@@ -127,18 +129,14 @@ export const ResultsSection: React.FC<ResultsSectionProps> = ({
 
     if (list.length >= 3) return list.slice(0, 3);
 
-    const fallbacks = [
-      'If an optional hand lens is available, inspect grain or cellular structure in open daylight to examine fine textural boundaries.',
-      'Gently test surface hardness or physical resilience on a loose fragment (if available) without disturbing the main formation.',
-      'Document orientation, slope gradient, or structural contacts using a standard compass if available (may support environmental context).',
-    ];
+    const fallbacks = getContextAwareFallbackChecks(category, possibleInterpretation, visibleEvidence);
     for (const f of fallbacks) {
       if (list.length < 3 && !list.includes(f)) list.push(f);
     }
     return list.slice(0, 3);
   })();
 
-  // Section 4: Field Notebook Summary (Max 3 sentences, NEVER empty)
+  // Section 4: Field Notebook Summary (Max 3 sentences, natural, concise, no duplicate phrases)
   const fieldNoteSummary: string = (() => {
     const rawSum =
       analysis.fieldNoteSummary ||
@@ -148,14 +146,12 @@ export const ResultsSection: React.FC<ResultsSectionProps> = ({
       (analysis as any).summary ||
       (analysis as any).field_note_summary;
 
-    if (typeof rawSum === 'string' && rawSum.trim().length > 0) {
-      return rawSum.trim();
-    }
-    // Synthesize/recover short summary from the successfully returned analysis
-    const firstInterp = possibleInterpretation.split(/(?<=[.?!])\s+/)[0] || possibleInterpretation;
-    const firstEvid = visibleEvidence[0] ? visibleEvidence[0].replace(/\.$/, '') : 'distinguishing visible textures';
-    const firstCheck = inPersonChecks[0] ? inPersonChecks[0].split(/[.:]/)[0] : 'physical in-situ testing';
-    return `Observed field specimen exhibiting ${firstEvid.toLowerCase()}. Visual characteristics appear consistent with ${firstInterp.toLowerCase().replace(/^the specimen appears consistent with /, '')}. In-person verification via ${firstCheck.toLowerCase()} is recommended to support identification.`;
+    return formatFieldNotebookSummary(rawSum, {
+      category,
+      visibleEvidence,
+      possibleInterpretation,
+      inPersonChecks,
+    });
   })();
 
   // Synchronized in-situ interactive checklist
